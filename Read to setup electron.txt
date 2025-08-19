@@ -1,0 +1,11 @@
+npm init -y
+
+npm install --save-dev electron
+
+npm install --save-dev electron-builder
+
+npm install --save electron-updater
+
+run all of the commands in terminal 
+
+dave.dll
