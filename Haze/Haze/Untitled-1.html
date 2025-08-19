@@ -1,0 +1,735 @@
+ <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haze V1</title> 
+    
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.49.0/min/vs/loader.js"></script>
+
+    <style>
+        :root {
+            --bg-main: #000000;
+            --bg-secondary: #121212;
+            --border-accent: #000000;
+            --text-primary: #e0e0e0;
+            --icon-color: #a9a9a9;
+            --toggle-bg: #3c3c3c;
+            --toggle-handle: #ffffff;
+            --button-bg: #1e1e1e;
+            --button-border: #333333;
+            --brand-color: #5865F2;
+
+            --editor-bg: #000000;
+            --editor-tab-bar-bg: #000000;
+            --editor-tab-active-bg: #000000;
+            --editor-text-color: #d4d4d4;
+            --editor-line-number-color: #858585;
+            --editor-icon-color: #d4d4d4;
+
+            --window-border-radius: 12px;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+        html { background-color: transparent; overflow: hidden; }
+        body {
+            background-color: transparent; 
+            font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0; color: var(--text-primary);
+            -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+            overflow: hidden; height: 100vh; padding: 0; 
+        }
+        
+        #loading-screen {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: var(--bg-main); z-index: 100; display: flex;
+            align-items: center; justify-content: center;
+            transition: opacity 0.5s ease-out;
+            border-radius: var(--window-border-radius); overflow: hidden;
+        }
+        #loading-screen.fade-out { opacity: 0; }
+        #loading-video { width: 100%; height: 100%; object-fit: cover; }
+
+        .window {
+            width: 100%; height: 100%; background-color: var(--bg-main);
+            display: flex; flex-direction: column; overflow: hidden;
+            position: absolute; z-index: 10; border-radius: var(--window-border-radius);
+            opacity: 0; transform: translateY(100px);
+            transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;
+        }
+        .editor-content-area, .scripthub-search, input, textarea {
+            user-select: text; -webkit-user-select: text; -moz-user-select: text; -ms-user-select: text;
+        }
+        .window.show { opacity: 1; transform: translateY(0); }
+        .window.closing-down { opacity: 0; transform: translateY(100px); }
+
+        .title-bar { 
+            display: flex; justify-content: space-between; align-items: center; 
+            padding: 0 16px; height: 48px; background-color: var(--bg-secondary); 
+            flex-shrink: 0; cursor: move; -webkit-app-region: drag;
+        }
+        .title-bar-left, .title-bar-right { display: flex; align-items: center; gap: 25px; }
+        .title-bar .material-symbols-outlined { 
+            font-size: 22px; cursor: pointer; color: var(--icon-color); 
+            transition: color 0.2s ease; -webkit-app-region: no-drag;
+        }
+        .title-bar .material-symbols-outlined:hover { color: var(--text-primary); }
+        .title-bar-logo { height: 34px; width: auto; }
+        .title-bar-icon {
+            height: 18px; width: auto; cursor: pointer; -webkit-app-region: no-drag;
+            transition: transform 0.2s ease, filter 0.2s ease; filter: brightness(0.8);
+        }
+        .title-bar-icon:hover { filter: brightness(1.1); transform: scale(1.1); }
+
+        .app-body { display: flex; flex-grow: 1; height: calc(100% - 48px); overflow: hidden; }
+
+        .sidebar { 
+            width: 65px; background-color: var(--bg-main);
+            display: flex; flex-direction: column; justify-content: space-between; 
+            align-items: center; padding: 30px 0; flex-shrink: 0; 
+        }
+        .sidebar-top { display: flex; flex-direction: column; align-items: center; gap: 35px; }
+        .sidebar-icon-img {
+            width: 28px; height: 28px; cursor: pointer;
+            transition: filter 0.2s ease; filter: brightness(0.7);
+        }
+        .sidebar-icon-img:hover, .sidebar-icon-img.active { filter: brightness(0.9); }
+
+        .content-area { flex-grow: 1; position: relative; overflow: hidden; }
+        .tab-content { display: none; overflow-y: auto; position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+        .tab-content:not(#terminal) { padding: 30px 45px; }
+        .tab-content.active { display: block; }
+        #terminal.active { display: flex; }
+        .content-area h1 { margin-top: 0; padding-bottom: 12px; border-bottom: 1px solid var(--button-border); }
+        #home, #cloud, #settings { scrollbar-width: none; }
+        #home::-webkit-scrollbar, #cloud::-webkit-scrollbar, #settings::-webkit-scrollbar { display: none; }
+
+        .home-container { display: flex; flex-direction: column; gap: 24px; }
+        .home-hero {
+            background-color: var(--bg-secondary);
+            background-image: radial-gradient(circle at 100% 0%, rgba(88, 101, 242, 0.1) 0%, rgba(88, 101, 242, 0) 40%);
+            padding: 24px; border-radius: 12px; text-align: center; border: 1px solid var(--button-border);
+        }
+        .hero-logo-img { height: 80px; width: auto; margin-bottom: 16px; }
+        .home-hero h1 { font-size: 28px; margin: 0 0 4px 0; border: none; padding: 0; color: var(--text-primary); }
+        .home-hero p { font-size: 16px; color: var(--icon-color); margin: 0 0 20px 0; }
+        .btn-primary {
+            background: var(--brand-color); color: white; font-weight: 600; font-size: 16px; 
+            padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer;
+            transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 8px;
+        }
+        .btn-primary:hover { background: #4752c4; transform: translateY(-2px); box-shadow: 0 4px 20px rgba(88, 101, 242, 0.3); }
+        .home-info-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .info-card {
+            background-color: var(--bg-secondary); padding: 20px; border-radius: 8px; 
+            border: 1px solid var(--button-border); display: flex; align-items: center; gap: 15px;
+            transition: transform 0.2s ease, border-color 0.2s ease; text-decoration: none; color: var(--text-primary);
+        }
+        .info-card:hover { transform: translateY(-5px); border-color: var(--brand-color); }
+        .card-icon .material-symbols-outlined { font-size: 32px; color: var(--brand-color); }
+        .card-content h3 { font-size: 14px; color: var(--icon-color); margin: 0; font-weight: normal; border: none; padding: 0; }
+        .card-content p { font-size: 18px; margin: 4px 0 0 0; font-weight: 600; }
+
+        .settings-container { display: flex; flex-direction: column; gap: 24px; }
+        .settings-section {
+            background-color: var(--bg-secondary); border: 1px solid var(--button-border);
+            border-radius: 8px; padding: 20px; display: flex; flex-direction: column; gap: 12px;
+        }
+        .settings-section h2 {
+            margin: -4px 0 12px 0; padding-bottom: 12px; border-bottom: 1px solid var(--button-border);
+            font-size: 16px; color: var(--text-primary); font-weight: 600;
+        }
+        .setting-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; font-size: 15px; letter-spacing: 0.2px; }
+        .setting-item small { display: block; font-size: 12px; color: var(--icon-color); margin-top: 2px; }
+        .setting-control-group { display: flex; align-items: center; gap: 16px; }
+        .opacity-slider {
+            -webkit-appearance: none; appearance: none; width: 120px; height: 6px;
+            background: var(--toggle-bg); border-radius: 3px; outline: none;
+            cursor: pointer; transition: background 0.2s ease;
+        }
+        .opacity-slider:disabled { cursor: not-allowed; }
+        .opacity-slider::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none; width: 18px; height: 18px;
+            background: var(--brand-color); border-radius: 50%; cursor: pointer;
+            border: 3px solid var(--bg-secondary);
+        }
+        .setting-value-button {
+            background-color: var(--button-bg); border: 1px solid var(--button-border);
+            padding: 6px 14px; border-radius: 5px; font-size: 14px; color: var(--text-primary);
+            cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
+            min-width: 100px; text-align: center;
+        }
+        .setting-value-button:hover { background-color: #303030; }
+        .setting-input {
+            background-color: var(--button-bg); border: 1px solid var(--button-border); color: var(--text-primary);
+            padding: 8px 12px; border-radius: 6px; font-size: 14px; outline: none;
+            transition: border-color 0.2s; width: 180px; text-align: right;
+        }
+        .setting-input:focus { border-color: var(--brand-color); }
+        .setting-action-button {
+            background-color: var(--button-bg); border: 1px solid var(--button-border); color: var(--text-primary);
+            padding: 8px 20px; border-radius: 6px; font-size: 14px; font-weight: 600;
+            cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
+        }
+        .setting-action-button:hover { background-color: #333; }
+        .toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--toggle-bg); border-radius: 24px; transition: .4s; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: var(--toggle-handle); border-radius: 50%; transition: .4s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+        input:checked + .slider:before { transform: translateX(20px); }
+
+        .scripthub-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: none; padding-bottom: 0; }
+        .scripthub-header h1 { border-bottom: none; }
+        .scripthub-search { width: 250px; background-color: var(--bg-secondary); border: 1px solid var(--button-border); color: var(--text-primary); padding: 10px 16px; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s; }
+        .scripthub-search:focus { border-color: var(--text-primary); }
+        .scripthub-search::placeholder { color: var(--icon-color); }
+        .scripthub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
+        .script-card { background-color: var(--bg-secondary); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--button-border); transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .script-card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); }
+        .script-card-image { width: 100%; height: 140px; object-fit: cover; background-color: var(--bg-main); }
+        .script-card-content { padding: 16px; flex-grow: 1; display: flex; flex-direction: column; }
+        .script-card-content h3 { margin: 0 0 8px 0; font-size: 18px; color: var(--text-primary); font-weight: 600; border-bottom: none; padding-bottom: 0; }
+        .script-card-content p { margin: 0 0 16px 0; font-size: 13px; color: var(--icon-color); line-height: 1.5; flex-grow: 1; }
+        .script-card-actions { display: flex; gap: 8px; margin-top: auto; }
+        .script-card-actions button { flex-grow: 1; background-color: var(--button-bg); border: 1px solid var(--button-border); color: var(--text-primary); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background-color 0.2s; border-radius: 6px; padding: 8px 12px; font-size: 14px; font-weight: 600; }
+        .script-card-actions button:hover { background-color: #303030; }
+        .script-card-actions button .material-symbols-outlined { font-size: 20px; }
+        .script-card-actions button .execute-icon { height: 14px; width: auto; }
+        .editor-container { display: flex; flex-direction: column; width: 100%; height: 100%; background-color: var(--editor-bg); color: var(--editor-text-color); overflow: hidden; }
+        .editor-tab-bar { display: flex; align-items: center; background-color: var(--editor-tab-bar-bg); flex-shrink: 0; padding-left: 10px; }
+        .tabs-list { display: flex; flex-grow: 1; }
+        .file-tab { display: flex; align-items: center; gap: 8px; padding: 8px 12px 6px; font-size: 13px; cursor: pointer; border-right: 1px solid var(--editor-tab-bar-bg); transition: all 0.3s ease; max-width: 200px; overflow: hidden; white-space: nowrap; border-top-left-radius: 6px; border-top-right-radius: 6px; border-bottom: 2px solid transparent; }
+        .file-tab.active { background-color: var(--editor-tab-active-bg); border-bottom-color: #ffffff; }
+        .file-tab .material-symbols-outlined { font-size: 16px; color: var(--editor-icon-color); }
+        .file-tab .close-tab-btn { font-size: 18px; border-radius: 4px; padding: 1px; }
+        .file-tab .close-tab-btn:hover { background-color: rgba(255,255,255,0.1); }
+        .file-tab.entering, .file-tab.closing { opacity: 0; transform: scale(0.8); max-width: 0px; padding-left: 0; padding-right: 0; }
+        .file-tab.closing { margin-right: -1px; }
+        .add-tab-btn { padding: 8px; cursor: pointer; }
+        .add-tab-btn .material-symbols-outlined { font-size: 20px; color: var(--editor-icon-color); }
+        .editor-content-area { flex-grow: 1; position: relative; overflow: hidden; }
+
+        .modal-overlay {
+            position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .modal-overlay.show { opacity: 1; pointer-events: auto; }
+        .modal-container {
+            background-color: var(--bg-main);
+            border: 1px solid var(--button-border);
+            border-radius: var(--window-border-radius);
+            padding: 30px 40px;
+            width: 100%; max-width: 420px;
+            text-align: center; position: relative;
+            box-shadow: 0 0 35px rgba(88, 101, 242, 0.3); 
+            transform: scale(0.95);
+            transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+        .modal-overlay.show .modal-container { transform: scale(1); }
+        .modal-close-btn {
+            position: absolute; top: 15px; right: 15px;
+            font-size: 24px; color: var(--icon-color);
+            cursor: pointer; transition: color 0.2s ease, transform 0.2s ease;
+        }
+        .modal-close-btn:hover { color: var(--text-primary); transform: rotate(90deg); }
+        .modal-logo {
+            width: 80px; height: 80px;
+            border-radius: 50%; object-fit: cover;
+            margin-bottom: 16px; border: 3px solid var(--brand-color);
+        }
+        .modal-title {
+            font-size: 24px; font-weight: 600;
+            color: var(--text-primary); margin: 0 0 8px 0;
+        }
+        .modal-subtitle {
+            font-size: 15px; color: var(--icon-color);
+            margin: 0 0 24px 0;
+        }
+        .modal-input-wrapper { position: relative; margin-bottom: 24px; }
+        .modal-input {
+            width: 100%; background-color: var(--bg-secondary);
+            border: 1px solid var(--button-border); color: var(--text-primary);
+            border-radius: 8px; padding: 14px 16px; font-size: 16px;
+            outline: none; transition: border-color 0.2s;
+            padding-right: 60px; 
+        }
+        .modal-input:focus { border-color: var(--brand-color); }
+        .modal-char-counter {
+            position: absolute; right: 16px; top: 50%;
+            transform: translateY(-50%); color: var(--icon-color);
+            font-size: 14px;
+        }
+        .modal-save-btn {
+            width: 100%; background: var(--brand-color); color: white;
+            font-weight: 600; font-size: 16px; padding: 14px 24px;
+            border: none; border-radius: 8px; cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .modal-save-btn:hover {
+            background: #4752c4; transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(88, 101, 242, 0.3);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="loading-screen">
+        <video id="loading-video" autoplay muted loop playsinline>
+            <source src="videoplayback.mp4" type="video/mp4">
+        </video>
+    </div>
+
+    <div class="window" id="main-window">
+        <header class="title-bar" id="title-bar">
+             <div class="title-bar-left">
+                <img src="Hanxe-removebg-preview.png" alt="Hanxe Logo" class="title-bar-logo">
+                <img src="play-button-arrowhead.png" alt="Execute" class="title-bar-icon">
+                <img src="Clear.png" alt="Clear" class="title-bar-icon">
+                <span class="material-symbols-outlined">folder</span>
+                <img src="SaveFile.png" alt="Save File" class="title-bar-icon">
+            </div>
+            <div class="title-bar-right">
+                <img src="Attach.png" alt="Attach" class="title-bar-icon">
+                <span id="window-minimize-btn" class="material-symbols-outlined">remove</span>
+                <span id="window-close-btn" class="material-symbols-outlined">close</span>
+            </div>
+        </header>
+
+        <div class="app-body">
+            <nav class="sidebar">
+                <div class="sidebar-top">
+                    <img src="Home.png"     alt="Home"     class="sidebar-icon-img active" data-tab="home">
+                    <img src="Console.png" alt="Terminal" class="sidebar-icon-img"        data-tab="terminal">
+                    <img src="ScriptHub.png"    alt="Cloud"    class="sidebar-icon-img"        data-tab="cloud">
+                </div>
+                <div class="sidebar-bottom">
+                    <img src="Settings.png" alt="Settings" class="sidebar-icon-img"        data-tab="settings">
+                </div>
+            </nav>
+
+            <main class="content-area">
+                
+                <div id="home" class="tab-content active">
+                    <div class="home-container">
+                        <div class="home-hero">
+                            <img src="Hanxe-removebg-preview.png" alt="Hanxe Logo" class="hero-logo-img">
+                            <h1>Introduceing Haze V1!</h1>
+                            <p>Your Ultimate Execution Tool</p>
+                            <button class="btn-primary discord-link-btn">
+                                <span class="material-symbols-outlined">link</span>
+                                Discord
+                            </button>
+                        </div>
+                        <div class="home-info-cards">
+                            <div class="info-card">
+                                <div class="card-icon"><span class="material-symbols-outlined">shield</span></div>
+                                <div class="card-content">
+                                    <h3>Status</h3>
+                                    <p class="status-value attached">Active</p>
+                                </div>
+                            </div>
+                            <div class="info-card">
+                                <div class="card-icon"><span class="material-symbols-outlined">verified</span></div>
+                                <div class="card-content">
+                                    <h3>Version</h3>
+                                    <p>v1.0.0</p>
+                                </div>
+                            </div>
+                            <a href="#" class="info-card" draggable="false" onclick="document.querySelector('[data-tab=cloud]').click()">
+                                <div class="card-icon"><span class="material-symbols-outlined">star</span></div>
+                                <div class="card-content">
+                                    <h3>Featured Script</h3>
+                                    <p>Arsenal</p>
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="terminal" class="tab-content">
+                    <div class="editor-container">
+                        <div class="editor-tab-bar">
+                            <div class="tabs-list"></div>
+                            <div class="add-tab-btn" title="New File">
+                                <span class="material-symbols-outlined">add</span>
+                            </div>
+                        </div>
+                        <div class="editor-content-area"></div>
+                    </div>
+                </div>
+
+                <div id="cloud" class="tab-content">
+                    <div class="scripthub-header">
+                        <h1>Script Hub</h1>
+                        <input type="text" class="scripthub-search" placeholder="Search for scripts...">
+                    </div>
+                    <div class="scripthub-grid">
+                        <div class="script-card">
+                            <img src="https://i.postimg.cc/J45LsmgM/zfzxsdfsfsdfsf.webp" alt="Blade Ball" class="script-card-image">
+                            <div class="script-card-content">
+                                <h3>Blade Ball Autofarm</h3>
+                                <p>Automatically farms coins and levels up by parrying the ball perfectly every time. Also includes ability spam.</p>
+                                <div class="script-card-actions">
+                                    <button><img src="play-button-arrowhead.png" alt="Execute" class="execute-icon">Execute</button>
+                                    <button><span class="material-symbols-outlined">content_copy</span>Copy Script</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="script-card">
+                            <img src="https://placehold.co/600x400/000000/121212/png" alt="Script Thumbnail" class="script-card-image">
+                            <div class="script-card-content">
+                                <h3>Infinite Yield</h3>
+                                <p>A powerful admin script with a massive command list for almost any game. The original and best.</p>
+                                <div class="script-card-actions">
+                                    <button><img src="play-button-arrowhead.png" alt="Execute" class="execute-icon">Execute</button>
+                                    <button><span class="material-symbols-outlined">content_copy</span>Copy Script</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="settings" class="tab-content">
+                    <div class="settings-container">
+                        <div class="settings-section">
+                            <h2>Appearance</h2>
+                            <div class="setting-item">
+                                <span>Topmost</span>
+                                <label class="toggle-switch"><input type="checkbox" checked><span class="slider"></span></label>
+                            </div>
+                            <div class="setting-item">
+                                <div>
+                                    <span>Window Opacity</span>
+                                    <small>Makes the window transparent</small>
+                                </div>
+                                <div class="setting-control-group">
+                                    <label class="toggle-switch"><input id="opacity-toggle" type="checkbox"><span class="slider"></span></label>
+                                    <input type="range" min="20" max="100" value="100" class="opacity-slider" id="opacity-slider" disabled>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-section">
+                            <h2>General</h2>
+                            <div class="setting-item">
+                                <span>Auto Attach</span>
+                                <label class="toggle-switch"><input type="checkbox" checked><span class="slider"></span></label>
+                            </div>
+                             <div class="setting-item">
+                                <span>Auto Inject</span>
+                                 <label class="toggle-switch"><input type="checkbox"><span class="slider"></span></label>
+                            </div>
+                            <div class="setting-item">
+                                <span>Hide to tray on close</span>
+                                <label class="toggle-switch"><input type="checkbox"><span class="slider"></span></label>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-section">
+                            <h2>Customization</h2>
+                             <div class="setting-item">
+                                <span>Discord Rich Presence</span>
+                                <label class="toggle-switch"><input type="checkbox" checked><span class="slider"></span></label>
+                            </div>
+                            <div class="setting-item">
+                                <span>Custom Window Title</span>
+                                <button id="open-title-modal-btn" class="setting-value-button">Haze V1</button>
+                            </div>
+                             <div class="setting-item">
+                                <span>Execution Identity</span>
+                                <input type="number" class="setting-input" value="8" min="0" max="8">
+                            </div>
+                        </div>
+
+                        <div class="settings-section">
+                            <h2>Actions</h2>
+                            <div class="setting-item">
+                                <span>Clear Scripts Cache</span>
+                                <button class="setting-action-button">Clear</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div id="title-modal-overlay" class="modal-overlay">
+        <div id="title-modal" class="modal-container">
+            <span id="modal-close-btn" class="modal-close-btn material-symbols-outlined">close</span>
+            <img src="Hanxe-removebg-preview.png" alt="Haze Logo" class="modal-logo">
+            <h2 class="modal-title">Set Your Window Title</h2>
+            <p class="modal-subtitle">Choose a new title for the application.</p>
+            <div class="modal-input-wrapper">
+                <input type="text" id="modal-title-input" class="modal-input" placeholder="Enter new title..." maxlength="25">
+                <span id="modal-char-counter" class="modal-char-counter">0/25</span>
+            </div>
+            <button id="modal-save-btn" class="modal-save-btn">Save Title</button>
+        </div>
+    </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const loadingScreen = document.getElementById('loading-screen');
+            const appWindow = document.getElementById('main-window');
+
+            document.addEventListener('dragover', (event) => {
+                event.preventDefault();
+            });
+            document.addEventListener('drop', (event) => {
+                event.preventDefault();
+            });
+
+            document.addEventListener('contextmenu', (event) => {
+                const isAllowed = event.target.closest('.editor-content-area, .scripthub-search, input, textarea');
+                if (!isAllowed) { event.preventDefault(); }
+            });
+            document.addEventListener('copy', (event) => {
+                const isAllowed = document.activeElement.closest('.editor-content-area, .scripthub-search, input, textarea');
+                if (!isAllowed) { event.preventDefault(); }
+            });
+            
+            setTimeout(() => {
+                if (loadingScreen) { loadingScreen.classList.add('fade-out'); }
+                appWindow.classList.add('show');
+                setTimeout(() => { if (loadingScreen) { loadingScreen.remove(); } }, 500); 
+            }, 3000);
+
+            const closeButton = document.getElementById('window-close-btn');
+            if (closeButton) {
+                closeButton.addEventListener('click', () => {
+                    appWindow.classList.add('closing-down');
+                    setTimeout(() => { window.close(); }, 400);
+                });
+            }
+
+            const discordButton = document.querySelector('.discord-link-btn');
+            if (discordButton) {
+                discordButton.addEventListener('click', () => {
+                    if (window.electronAPI) {
+                        window.electronAPI.openLink('https://discord.gg/yourinvite');
+                    } else {
+                         console.error('electronAPI is not available. Check preload script setup.');
+                    }
+                });
+            }
+            
+            const titleBar = document.getElementById('title-bar');
+            let isDragging = false;
+            let offsetX, offsetY;
+            titleBar.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.title-bar-icon, .material-symbols-outlined')) return;
+                isDragging = true;
+                const rect = appWindow.getBoundingClientRect();
+                offsetX = e.clientX - rect.left;
+                offsetY = e.clientY - rect.top;
+            });
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                let newX = e.clientX - offsetX;
+                let newY = e.clientY - offsetY;
+                const windowWidth = appWindow.offsetWidth;
+                const windowHeight = appWindow.offsetHeight;
+                newX = Math.max(0, Math.min(newX, window.innerWidth - windowWidth));
+                newY = Math.max(0, Math.min(newY, window.innerHeight - windowHeight));
+                appWindow.style.left = newX + 'px';
+                appWindow.style.top = newY + 'px';
+            });
+            document.addEventListener('mouseup', () => { isDragging = false; });
+
+            const mainTabButtons = document.querySelectorAll('.sidebar [data-tab]');
+            const mainTabContents = document.querySelectorAll('.content-area .tab-content');
+            mainTabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const targetTabId = button.dataset.tab; 
+                    mainTabButtons.forEach(btn => btn.classList.remove('active'));
+                    mainTabContents.forEach(content => content.classList.remove('active'));
+                    button.classList.add('active');
+                    const targetContent = document.getElementById(targetTabId);
+                    if (targetContent) { targetContent.classList.add('active'); }
+                });
+            });
+
+            const opacityToggle = document.getElementById('opacity-toggle');
+            const opacitySlider = document.getElementById('opacity-slider');
+            if(opacityToggle && opacitySlider) {
+                const updateOpacity = () => {
+                    const value = opacitySlider.value;
+                    if (opacityToggle.checked) {
+                        appWindow.style.opacity = value / 100;
+                    }
+                };
+                opacitySlider.addEventListener('input', updateOpacity);
+                opacityToggle.addEventListener('change', () => {
+                    if (opacityToggle.checked) {
+                        opacitySlider.disabled = false;
+                        updateOpacity();
+                    } else {
+                        opacitySlider.disabled = true;
+                        appWindow.style.opacity = '1';
+                    }
+                });
+            }
+
+            const openModalBtn = document.getElementById('open-title-modal-btn');
+            const titleModalOverlay = document.getElementById('title-modal-overlay');
+            const titleModalInput = document.getElementById('modal-title-input');
+            const modalCloseBtn = document.getElementById('modal-close-btn');
+            const modalSaveBtn = document.getElementById('modal-save-btn');
+            const modalCharCounter = document.getElementById('modal-char-counter');
+            const openTitleModal = () => {
+                titleModalInput.value = openModalBtn.textContent;
+                modalCharCounter.textContent = `${titleModalInput.value.length}/${titleModalInput.maxLength}`;
+                titleModalOverlay.classList.add('show');
+                titleModalInput.focus();
+            };
+            const closeTitleModal = () => { titleModalOverlay.classList.remove('show'); };
+            const saveNewTitle = () => {
+                const newTitle = titleModalInput.value.trim();
+                if (newTitle) {
+                    document.title = newTitle;
+                    openModalBtn.textContent = newTitle;
+                } else {
+                    document.title = "Haze V1";
+                    openModalBtn.textContent = "Haze V1";
+                }
+                closeTitleModal();
+            };
+            if (openModalBtn) openModalBtn.addEventListener('click', openTitleModal);
+            if (modalCloseBtn) modalCloseBtn.addEventListener('click', closeTitleModal);
+            if (modalSaveBtn) modalSaveBtn.addEventListener('click', saveNewTitle);
+            if (titleModalOverlay) {
+                titleModalOverlay.addEventListener('click', (event) => {
+                    if (event.target === titleModalOverlay) closeTitleModal();
+                });
+            }
+            if (titleModalInput) {
+                titleModalInput.addEventListener('input', () => {
+                    modalCharCounter.textContent = `${titleModalInput.value.length}/${titleModalInput.maxLength}`;
+                });
+                titleModalInput.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter') saveNewTitle();
+                });
+            }
+
+            let monacoInitialized = false;
+            function initializeMonaco() {
+                if (monacoInitialized) return;
+                monacoInitialized = true;
+                require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.49.0/min/vs' }});
+                require(['vs/editor/editor.main'], function() {
+                    const tabsList = document.querySelector('.tabs-list');
+                    const addTabBtn = document.querySelector('.add-tab-btn');
+                    const editorContentArea = document.querySelector('.editor-content-area');
+                    if (!tabsList || !addTabBtn || !editorContentArea) return;
+                    
+                    let monacoEditor;
+                    let tabsState = []; 
+                    let activeTabId = null;
+                    let tabCounter = 1;
+
+                    monaco.editor.defineTheme('sentinel-dark', {
+                        base: 'vs-dark', inherit: true,
+                        rules: [
+                            { token: 'comment', foreground: '6a9955' }, { token: 'keyword', foreground: 'c586c0' },
+                            { token: 'number', foreground: 'b5cea8' }, { token: 'string', foreground: 'ce9178' },
+                        ],
+                        colors: {
+                            'editor.background': getComputedStyle(document.documentElement).getPropertyValue('--editor-bg').trim(),
+                            'editor.foreground': getComputedStyle(document.documentElement).getPropertyValue('--editor-text-color').trim(),
+                            'editorLineNumber.foreground': getComputedStyle(document.documentElement).getPropertyValue('--editor-line-number-color').trim(),
+                            'editorLineNumber.activeForeground': getComputedStyle(document.documentElement).getPropertyValue('--editor-text-color').trim(),
+                            'editorCursor.foreground': '#AEAFAD', 'editor.selectionBackground': '#264f78',
+                            'editor.lineHighlightBackground': '#101010',
+                        }
+                    });
+                    monacoEditor = monaco.editor.create(editorContentArea, {
+                        language: 'lua', theme: 'sentinel-dark', automaticLayout: true,
+                        fontFamily: "'Consolas', 'Courier New', monospace", fontSize: 14,
+                        lineHeight: 21, minimap: { enabled: false },
+                        scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, },
+                        padding: { top: 10 }
+                    });
+
+                    const switchToTab = (tabId) => {
+                        if (activeTabId === tabId) return;
+                        if (activeTabId) {
+                            const oldTab = tabsState.find(t => t.id === activeTabId);
+                            if (oldTab) oldTab.viewState = monacoEditor.saveViewState();
+                            const oldTabElement = tabsList.querySelector(`.file-tab[data-tab-id="${activeTabId}"]`);
+                            if (oldTabElement) oldTabElement.classList.remove('active');
+                        }
+                        activeTabId = tabId;
+                        const newTab = tabsState.find(t => t.id === tabId);
+                        if (newTab) {
+                            monacoEditor.setModel(newTab.model);
+                            if (newTab.viewState) monacoEditor.restoreViewState(newTab.viewState);
+                            monacoEditor.focus();
+                            const newTabElement = tabsList.querySelector(`.file-tab[data-tab-id="${tabId}"]`);
+                            if (newTabElement) newTabElement.classList.add('active');
+                        }
+                    };
+
+                    const createNewTab = () => {
+                        const tabId = Date.now();
+                        const tabName = `Untitled-${tabCounter++}.lua`;
+                        const model = monaco.editor.createModel(`-- ${tabName}\n-- Welcome to Haze Executor`, 'lua');
+                        tabsState.push({ id: tabId, name: tabName, model: model, viewState: null });
+                        const tabElement = document.createElement('div');
+                        tabElement.className = 'file-tab entering';
+                        tabElement.dataset.tabId = tabId;
+                        tabElement.innerHTML = `<span class="material-symbols-outlined">description</span><span>${tabName}</span><span class="material-symbols-outlined close-tab-btn">close</span>`;
+                        tabsList.appendChild(tabElement);
+                        requestAnimationFrame(() => tabElement.classList.remove('entering'));
+                        switchToTab(tabId);
+                    };
+
+                    const closeTab = (tabIdToClose) => {
+                        if (tabsState.length <= 1) return;
+                        const tabElementToClose = tabsList.querySelector(`.file-tab[data-tab-id="${tabIdToClose}"]`);
+                        if (!tabElementToClose) return;
+                        tabElementToClose.classList.add('closing');
+                        setTimeout(() => {
+                            const tabIndex = tabsState.findIndex(t => t.id === tabIdToClose);
+                            if (tabIndex === -1) return;
+                            tabsState[tabIndex].model.dispose(); 
+                            tabsState.splice(tabIndex, 1);
+                            tabElementToClose.remove();
+                            if (activeTabId === tabIdToClose) {
+                                const newActiveId = tabsState[tabIndex] ? tabsState[tabIndex].id : tabsState[tabIndex - 1].id;
+                                switchToTab(newActiveId);
+                            }
+                        }, 300);
+                    };
+
+                    tabsList.addEventListener('click', (e) => {
+                        const targetTab = e.target.closest('.file-tab');
+                        if (!targetTab) return;
+                        const tabId = Number(targetTab.dataset.tabId);
+                        if (e.target.classList.contains('close-tab-btn')) {
+                            e.stopPropagation(); closeTab(tabId);
+                        } else {
+                            switchToTab(tabId);
+                        }
+                    });
+
+                    addTabBtn.addEventListener('click', createNewTab);
+                    createNewTab();
+                });
+            }
+            document.querySelector('.sidebar [data-tab="terminal"]').addEventListener('click', initializeMonaco, { once: true });
+        });
+    </script>
+</body>
+</html>
